@@ -26,6 +26,7 @@ ARQ_HIST = "historico_cortes.json"
 ARQ_PROC = "processos_config.json"
 ARQ_EXEC = "execucao_ativa.json"
 ARQ_ESTADO = "estado_maquina.json"
+ARQ_TURNO = "config_turno.json"
 
 # Configuração do tema
 ctk.set_appearance_mode("dark")
@@ -66,6 +67,9 @@ class PhoenixMESPro:
         self.data_inicio_filtro = None
         self.data_fim_filtro = None
 
+        # Configuração de turno
+        self.config_turno = self.carregar_config_turno()
+
         # UI
         self.criar_interface()
 
@@ -93,6 +97,23 @@ class PhoenixMESPro:
         """Salva dados em arquivo JSON"""
         with open(arquivo, "w", encoding="utf-8") as f:
             json.dump(dados, f, indent=4, ensure_ascii=False)
+
+    def carregar_config_turno(self):
+        """Carrega configuração de turno para cálculo de disponibilidade."""
+        padrao = {
+            "inicio": "07:30",
+            "fim": "17:30",
+            "almoco_inicio": "12:00",
+            "almoco_fim": "13:00"
+        }
+        dados = self.carregar_json(ARQ_TURNO)
+        if not isinstance(dados, dict):
+            return padrao
+
+        for chave, valor in padrao.items():
+            if chave not in dados or not isinstance(dados.get(chave), str):
+                dados[chave] = valor
+        return dados
 
     # ==================== RESET ====================
 
@@ -508,6 +529,58 @@ class PhoenixMESPro:
             width=120,
             height=30
         ).pack(side="left", padx=10)
+
+        # Configuração de turno
+        ctk.CTkLabel(
+            filtro_controls,
+            text="Turno:",
+            font=ctk.CTkFont(size=13)
+        ).grid(row=1, column=0, padx=10, pady=5, sticky="e")
+
+        self.turno_inicio_entry = ctk.CTkEntry(filtro_controls, width=75)
+        self.turno_inicio_entry.grid(row=1, column=1, padx=5, pady=5, sticky="w")
+
+        ctk.CTkLabel(
+            filtro_controls,
+            text="até",
+            font=ctk.CTkFont(size=12)
+        ).grid(row=1, column=1, padx=(85, 0), pady=5, sticky="w")
+
+        self.turno_fim_entry = ctk.CTkEntry(filtro_controls, width=75)
+        self.turno_fim_entry.grid(row=1, column=2, padx=5, pady=5, sticky="w")
+
+        ctk.CTkLabel(
+            filtro_controls,
+            text="Almoço:",
+            font=ctk.CTkFont(size=13)
+        ).grid(row=1, column=3, padx=10, pady=5, sticky="e")
+
+        self.almoco_inicio_entry = ctk.CTkEntry(filtro_controls, width=75)
+        self.almoco_inicio_entry.grid(row=1, column=4, padx=5, pady=5, sticky="w")
+
+        ctk.CTkLabel(
+            filtro_controls,
+            text="até",
+            font=ctk.CTkFont(size=12)
+        ).grid(row=1, column=4, padx=(85, 0), pady=5, sticky="w")
+
+        self.almoco_fim_entry = ctk.CTkEntry(filtro_controls, width=75)
+        self.almoco_fim_entry.grid(row=1, column=5, padx=5, pady=5, sticky="w")
+
+        ctk.CTkButton(
+            filtro_controls,
+            text="💾 Salvar Turno",
+            command=self.salvar_config_turno,
+            fg_color="#1d3557",
+            hover_color="#14213d",
+            width=130,
+            height=30
+        ).grid(row=1, column=6, padx=15, pady=5)
+
+        self.turno_inicio_entry.insert(0, self.config_turno.get("inicio", "07:30"))
+        self.turno_fim_entry.insert(0, self.config_turno.get("fim", "17:30"))
+        self.almoco_inicio_entry.insert(0, self.config_turno.get("almoco_inicio", "12:00"))
+        self.almoco_fim_entry.insert(0, self.config_turno.get("almoco_fim", "13:00"))
 
         # ===== LAYOUT EM 2 COLUNAS =====
         content_frame = ctk.CTkFrame(main_container, fg_color="transparent")
@@ -1272,6 +1345,82 @@ class PhoenixMESPro:
         self.data_inicio.set_date(inicio_mes)
         self.data_fim.set_date(hoje)
 
+    def validar_hora_hhmm(self, valor):
+        """Valida e normaliza campo de hora no formato HH:MM."""
+        valor = (valor or "").strip()
+        if not re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", valor):
+            return None
+        h, m = valor.split(":")
+        return f"{int(h):02d}:{int(m):02d}"
+
+    def segundos_do_dia(self, hhmm):
+        """Converte HH:MM para segundos desde 00:00."""
+        h, m = [int(x) for x in hhmm.split(":")]
+        return h * 3600 + m * 60
+
+    def calcular_tempo_disponivel_turno(self, data_inicio, data_fim):
+        """Calcula tempo disponível conforme turno configurado no período."""
+        inicio_turno = self.segundos_do_dia(self.config_turno["inicio"])
+        fim_turno = self.segundos_do_dia(self.config_turno["fim"])
+        almoco_inicio = self.segundos_do_dia(self.config_turno["almoco_inicio"])
+        almoco_fim = self.segundos_do_dia(self.config_turno["almoco_fim"])
+
+        if fim_turno <= inicio_turno:
+            return 0
+
+        if almoco_fim < almoco_inicio:
+            almoco_inicio, almoco_fim = almoco_fim, almoco_inicio
+
+        hoje = datetime.now()
+        hoje_data = hoje.date()
+        agora_segundos = hoje.hour * 3600 + hoje.minute * 60 + hoje.second
+
+        total = 0
+        dia = data_inicio
+        while dia <= data_fim:
+            if dia > hoje_data:
+                break
+
+            limite = fim_turno
+            if dia == hoje_data:
+                limite = min(fim_turno, agora_segundos)
+
+            if limite > inicio_turno:
+                periodo = limite - inicio_turno
+                sobreposicao_almoco = max(0, min(limite, almoco_fim) - max(inicio_turno, almoco_inicio))
+                total += max(0, periodo - sobreposicao_almoco)
+
+            dia += timedelta(days=1)
+
+        return total
+
+    def salvar_config_turno(self):
+        """Salva configuração de turno e atualiza cálculo da eficiência."""
+        inicio = self.validar_hora_hhmm(self.turno_inicio_entry.get())
+        fim = self.validar_hora_hhmm(self.turno_fim_entry.get())
+        almoco_inicio = self.validar_hora_hhmm(self.almoco_inicio_entry.get())
+        almoco_fim = self.validar_hora_hhmm(self.almoco_fim_entry.get())
+
+        if not all([inicio, fim, almoco_inicio, almoco_fim]):
+            self.adicionar_evento("Formato de hora inválido. Use HH:MM.")
+            return
+
+        if self.segundos_do_dia(fim) <= self.segundos_do_dia(inicio):
+            self.adicionar_evento("Fim do turno deve ser maior que início.")
+            return
+
+        self.config_turno = {
+            "inicio": inicio,
+            "fim": fim,
+            "almoco_inicio": almoco_inicio,
+            "almoco_fim": almoco_fim
+        }
+        self.salvar_json(ARQ_TURNO, self.config_turno)
+        self.adicionar_evento(
+            f"Turno salvo: {inicio}-{fim} | almoço {almoco_inicio}-{almoco_fim}"
+        )
+        self.aplicar_filtro_eficiencia()
+
     def aplicar_filtro_eficiencia(self):
         """Aplica filtro e recalcula métricas de eficiência"""
         try:
@@ -1330,20 +1479,22 @@ class PhoenixMESPro:
         tempo_pausa_total = sum(tempo_para_segundos(r.get("tempo_pausa", "0s")) for r in registros_periodo)
         tempo_total = tempo_corte_total + tempo_traverse_total + tempo_pausa_total
 
-        # Tempo produtivo = corte + traverse (são movimentos do programa)
-        tempo_produtivo = tempo_corte_total + tempo_traverse_total
+        # Tempo efetivo = corte + deslocamento
+        tempo_efetivo = tempo_corte_total + tempo_traverse_total
         tempo_ocioso = tempo_pausa_total
 
-        # Calcula período total disponível (em horas de trabalho, ex: 8h por dia)
-        dias_periodo = (self.data_fim_filtro - self.data_inicio_filtro).days + 1
-        tempo_disponivel = dias_periodo * 8 * 3600  # 8 horas por dia em segundos
+        # Tempo esperado pelo turno configurado (considera dia atual parcial)
+        tempo_disponivel = self.calcular_tempo_disponivel_turno(self.data_inicio_filtro, self.data_fim_filtro)
+
+        # Gap operacional: tempo esperado - tempo efetivo
+        tempo_parado_operador = max(0, tempo_disponivel - tempo_efetivo)
 
         # Cálculo OEE simplificado
-        # Disponibilidade = Tempo de Operação / Tempo Disponível
-        disponibilidade = (tempo_total / tempo_disponivel * 100) if tempo_disponivel > 0 else 0
+        # Disponibilidade = Tempo Efetivo / Tempo Disponível
+        disponibilidade = (tempo_efetivo / tempo_disponivel * 100) if tempo_disponivel > 0 else 0
 
-        # Performance = Tempo Produtivo / Tempo Total de Operação
-        performance = (tempo_produtivo / tempo_total * 100) if tempo_total > 0 else 0
+        # Performance = Tempo Efetivo / Tempo Total de Operação registrado
+        performance = (tempo_efetivo / tempo_total * 100) if tempo_total > 0 else 0
 
         # Qualidade = 100% (assumindo sem refugo)
         qualidade = 100.0
@@ -1360,7 +1511,7 @@ class PhoenixMESPro:
         # Atualiza gráfico de pizza - Produtivo vs Ocioso
         self.ax_produtivo.clear()
         if tempo_total > 0:
-            valores = [tempo_produtivo, tempo_ocioso]
+            valores = [tempo_efetivo, tempo_ocioso]
             labels = ['Tempo Produtivo', 'Tempo Ocioso']
             colors = ['#06ffa5', '#e63946']
             explode = (0.05, 0)
@@ -1376,7 +1527,7 @@ class PhoenixMESPro:
                 shadow=True
             )
             self.ax_produtivo.set_title(
-                f'Total: {self.formatar(tempo_total)}',
+                f'Esperado: {self.formatar(tempo_disponivel)} | Efetivo: {self.formatar(tempo_efetivo)}',
                 color='#00d9ff',
                 fontsize=13,
                 pad=20
@@ -1442,8 +1593,14 @@ class PhoenixMESPro:
         resumo += f"║  Tempo de Pausa:                     ║\n"
         resumo += f"║    {self.formatar(tempo_pausa_total):36s} ║\n"
         resumo += f"╠════════════════════════════════════════╣\n"
-        resumo += f"║  TEMPO TOTAL:                        ║\n"
+        resumo += f"║  TEMPO TOTAL REGISTRADO:             ║\n"
         resumo += f"║    {self.formatar(tempo_total):36s} ║\n"
+        resumo += f"║  Tempo Esperado no Turno:            ║\n"
+        resumo += f"║    {self.formatar(tempo_disponivel):36s} ║\n"
+        resumo += f"║  Tempo Efetivo (Corte+Desloc.):      ║\n"
+        resumo += f"║    {self.formatar(tempo_efetivo):36s} ║\n"
+        resumo += f"║  Gap / Máquina Parada:               ║\n"
+        resumo += f"║    {self.formatar(tempo_parado_operador):36s} ║\n"
         resumo += f"╚════════════════════════════════════════╝\n"
 
         self.resumo_text.delete("1.0", "end")
@@ -1453,9 +1610,9 @@ class PhoenixMESPro:
         produtividade = ""
 
         if total_programas > 0:
-            tempo_medio_programa = tempo_total / total_programas
+            tempo_medio_programa = tempo_efetivo / total_programas
             perfuracoes_media = total_perfuracoes / total_programas
-            tempo_por_perfuracao = tempo_total / total_perfuracoes if total_perfuracoes > 0 else 0
+            tempo_por_perfuracao = tempo_efetivo / total_perfuracoes if total_perfuracoes > 0 else 0
 
             produtividade += "═══════════════════════════════════\n"
             produtividade += "  MÉDIAS POR PROGRAMA\n"
@@ -1470,9 +1627,9 @@ class PhoenixMESPro:
             produtividade += "  DISTRIBUIÇÃO PERCENTUAL\n"
             produtividade += "═══════════════════════════════════\n\n"
 
-            pct_corte = (tempo_corte_total / tempo_total * 100) if tempo_total > 0 else 0
-            pct_traverse = (tempo_traverse_total / tempo_total * 100) if tempo_total > 0 else 0
-            pct_pausa = (tempo_pausa_total / tempo_total * 100) if tempo_total > 0 else 0
+            pct_corte = (tempo_corte_total / tempo_efetivo * 100) if tempo_efetivo > 0 else 0
+            pct_traverse = (tempo_traverse_total / tempo_efetivo * 100) if tempo_efetivo > 0 else 0
+            pct_pausa = (tempo_pausa_total / tempo_disponivel * 100) if tempo_disponivel > 0 else 0
 
             produtividade += f"🔴 Corte:        {pct_corte:5.1f}%\n"
             produtividade += f"🔵 Deslocamento: {pct_traverse:5.1f}%\n"
@@ -1506,6 +1663,7 @@ class PhoenixMESPro:
 
         if tempo_total > 0:
             pct_pausa = (tempo_pausa_total / tempo_total * 100)
+            pct_gap = (tempo_parado_operador / tempo_disponivel * 100) if tempo_disponivel > 0 else 0
             if pct_pausa > 20:
                 recomendacoes += "💡 ALTO TEMPO DE PAUSA\n"
                 recomendacoes += f"   {pct_pausa:.1f}% do tempo em pausa.\n"
@@ -1513,6 +1671,12 @@ class PhoenixMESPro:
                 recomendacoes += "   • Falta de material?\n"
                 recomendacoes += "   • Problemas técnicos?\n"
                 recomendacoes += "   • Ajustes excessivos?\n\n"
+
+            if pct_gap > 15:
+                recomendacoes += "💡 TEMPO PARADO ELEVADO\n"
+                recomendacoes += f"   Gap de {self.formatar(tempo_parado_operador)} ({pct_gap:.1f}%).\n"
+                recomendacoes += "   Verifique tempo até o operador iniciar\n"
+                recomendacoes += "   cada ciclo e gargalos de setup.\n\n"
 
             if disponibilidade < 80:
                 recomendacoes += "💡 BAIXA DISPONIBILIDADE\n"
