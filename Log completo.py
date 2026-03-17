@@ -22,6 +22,10 @@ FILTER_TOPICS = {
 }
 
 
+def is_uptime_topic(topic):
+    return topic in FILTER_TOPICS
+
+
 def parse_message(payload):
     try:
         data = json.loads(payload)
@@ -300,9 +304,8 @@ class App:
 
         self.received_messages.append((ts, topic, payload, parsed_message))
 
-        if self.filter_uptime.get():
-            if topic in FILTER_TOPICS:
-                return
+        if self.filter_uptime.get() and is_uptime_topic(topic):
+            return
 
         message = parsed_message
 
@@ -380,11 +383,13 @@ class App:
 
         with open(descriptions_path, "w", encoding="utf-8") as descriptions_file:
             for ts, topic, payload, parsed_message in self.received_messages:
+                if is_uptime_topic(topic):
+                    continue
                 descriptions_file.write(f"{ts} | {topic} | {parsed_message}\n")
 
         with open(full_messages_path, "w", encoding="utf-8") as full_messages_file:
             for ts, topic, payload, _ in self.received_messages:
-                if topic in FILTER_TOPICS:
+                if is_uptime_topic(topic):
                     continue
                 full_messages_file.write(f"{ts} {topic} {payload}\n")
 
