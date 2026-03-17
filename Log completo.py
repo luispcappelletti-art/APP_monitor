@@ -2,6 +2,7 @@ import json
 import re
 from datetime import datetime
 from queue import Queue, Empty
+from tkinter import filedialog
 
 import paho.mqtt.client as mqtt
 import tkinter as tk
@@ -146,6 +147,7 @@ class App:
         self.mqtt = MQTTClient(self.queue)
 
         self.messages = []
+        self.received_messages = []
 
         self.outputs = {}
         self.inputs = {}
@@ -177,11 +179,15 @@ class App:
             variable=self.filter_uptime
         ).pack(side="left")
 
+        tk.Button(top, text="Export", command=self.export_messages).pack(side="left", padx=8)
+
         self.status = tk.Label(top, text="Disconnected")
         self.status.pack(side="right")
 
         main = tk.PanedWindow(self.root, orient="horizontal")
         main.pack(fill="both", expand=True)
+
+        self.main_pane = main
 
         left = tk.Frame(main)
         main.add(left)
@@ -237,6 +243,23 @@ class App:
 
         self.inputs_frame = inputs_frame
 
+        self.root.after(100, self.set_equal_panels)
+
+    def set_equal_panels(self):
+
+        self.main_pane.update_idletasks()
+
+        total_width = self.main_pane.winfo_width()
+
+        if total_width <= 0:
+            self.root.after(100, self.set_equal_panels)
+            return
+
+        one_third = total_width // 3
+
+        self.main_pane.sash_place(0, one_third, 0)
+        self.main_pane.sash_place(1, one_third * 2, 0)
+
     def connect(self):
 
         self.mqtt.connect(self.broker.get())
@@ -273,11 +296,15 @@ class App:
 
     def add_message(self, topic, payload, ts):
 
+        parsed_message, _ = parse_message(payload)
+
+        self.received_messages.append((ts, topic, payload, parsed_message))
+
         if self.filter_uptime.get():
             if topic in FILTER_TOPICS:
                 return
 
-        message, raw = parse_message(payload)
+        message = parsed_message
 
         index = len(self.messages)
 
@@ -322,6 +349,46 @@ class App:
         with open(LOG_FILE, "a", encoding="utf-8") as f:
 
             f.write(f"{ts} {topic} {payload}\n")
+
+    def export_messages(self):
+
+        if not self.received_messages:
+            self.status.config(text="No messages to export")
+            return
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        descriptions_path = filedialog.asksaveasfilename(
+            title="Save message descriptions",
+            defaultextension=".txt",
+            initialfile=f"message_descriptions_{timestamp}.txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+        )
+
+        if not descriptions_path:
+            return
+
+        full_messages_path = filedialog.asksaveasfilename(
+            title="Save full messages (without uptime)",
+            defaultextension=".txt",
+            initialfile=f"full_messages_without_uptime_{timestamp}.txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+        )
+
+        if not full_messages_path:
+            return
+
+        with open(descriptions_path, "w", encoding="utf-8") as descriptions_file:
+            for ts, topic, payload, parsed_message in self.received_messages:
+                descriptions_file.write(f"{ts} | {topic} | {parsed_message}\n")
+
+        with open(full_messages_path, "w", encoding="utf-8") as full_messages_file:
+            for ts, topic, payload, _ in self.received_messages:
+                if topic in FILTER_TOPICS:
+                    continue
+                full_messages_file.write(f"{ts} {topic} {payload}\n")
+
+        self.status.config(text="Export completed")
 
     def loop(self):
 
