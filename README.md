@@ -1,35 +1,41 @@
 # APP Monitor
 
-Aplicativo em Python para monitorar logs da máquina Phoenix e resumir automaticamente:
+Dashboard profissional em Python/Tkinter para análise visual de logs Phoenix, com foco em operação e corte.
 
-- quantos programas foram executados/cortados;
-- quanto tempo cada programa durou;
-- quantas aberturas de arco aconteceram;
-- quanto tempo total de arco cada programa teve;
-- quais erros apareceram durante cada execução.
+## O que o app entrega
 
-## Como funciona
+- dashboard executivo com visual escuro, cards e gráficos;
+- gráfico de utilização por programa;
+- gráfico de aberturas de arco por execução;
+- ranking visual dos erros mais recorrentes;
+- tabela detalhada de programas com duração, modo, erros e utilização;
+- timeline visual dos arcos detectados em cada programa;
+- exportação estruturada em JSON;
+- modo CLI para gerar resumo automático no terminal.
 
-O app lê um arquivo de log com o mesmo formato do `log_exemplo.txt` e usa estas regras principais:
+## Regras usadas para análise
 
-- `Output 6, Program_Running turned On/Off` para abrir e fechar uma sessão de programa;
-- `Output 1, Cut_Control turned On/Off` para contar abertura de arco e calcular o tempo de arco;
-- `Update Cnc State to ...` para montar o histórico de estados CNC;
-- mensagens com `error`, `fault`, `alarm`, `collision`, `Fast Stop` e `publish xpr error` para listar falhas.
+O monitor usa, por padrão, estas regras sobre o log:
 
-## Executar a interface gráfica
+- `Output 6, Program_Running turned On/Off` para detectar início e fim de programa;
+- `Output 1, Cut_Control turned On/Off` para detectar abertura de arco e calcular tempo de arco;
+- `Update Cnc State to ...` para histórico de estados CNC;
+- `Update Cut Mode to ...` para identificar o modo de corte;
+- mensagens com `error`, `fault`, `alarm`, `collision`, `Fast Stop` e `publish xpr error` para classificar falhas.
+
+## Como abrir o dashboard
 
 ```bash
 python3 monitor_app.py
 ```
 
-Ou já abrindo um log específico:
+Ou carregando diretamente um log:
 
 ```bash
 python3 monitor_app.py log_exemplo.txt
 ```
 
-## Executar somente o resumo no terminal
+## Como gerar somente o resumo JSON
 
 ```bash
 python3 monitor_app.py log_exemplo.txt --summary
@@ -37,11 +43,12 @@ python3 monitor_app.py log_exemplo.txt --summary
 
 ## Exportação
 
-Na interface gráfica é possível:
+Pela interface você pode:
 
-- abrir outro arquivo de log;
-- exportar um resumo estruturado em JSON.
+- abrir qualquer log `.txt` ou `.log`;
+- exportar um resumo analítico em JSON;
+- navegar pelos programas detectados e seus erros associados.
 
 ## Observação importante
 
-As métricas de arco usam o sinal `Cut_Control`. Se no seu ambiente o evento real de arco usar outro sinal, eu posso ajustar rapidamente a regra para o nome correto do seu log.
+As regras atuais consideram `Cut_Control` como sinal de arco ativo e `Program_Running` como referência de execução do programa. Se o seu ambiente usar outros sinais, o dashboard pode ser ajustado rapidamente para o padrão real da sua máquina.
