@@ -1,42 +1,46 @@
-# APP Monitor
+# APP Monitor Next
 
-Aplicativo em Python para transformar o log da máquina Phoenix em um **dashboard operacional e técnico**, com foco em produção, saúde do sistema e rastreabilidade.
+Aplicativo em Python para transformar o log da máquina Phoenix em um **command center operacional e técnico** com uma interface completamente refeita em **Qt / PySide6**.
 
-## O que o app entrega agora
+## O que mudou
 
-- dashboard visual mais executivo e profissional, organizado em abas;
-- aba exclusiva de **gráficos** com sessões, eficiência, estados CNC e distribuição de eventos;
-- visão de **programas detectados** com duração, modo, arcos, eficiência e eventos;
-- trilha de **incidentes / erros** com categorização operacional;
-- monitoramento de **serviços Phoenix / Managed / Rtos** por status Online/Offline;
-- extração de **inventário técnico e versões** encontradas no log;
-- sugestões automáticas de **novos registros operacionais** baseadas no próprio log analisado;
-- exportação do resumo completo em JSON.
+- saiu o **Tkinter** e entrou uma interface **Qt moderna**, com visual dark, painéis glassmorphism e estrutura muito mais flexível para evoluir animações e widgets ricos;
+- o app foi reorganizado como um cockpit com abas de **visão geral**, **programas**, **alertas e timeline** e **inventário técnico**;
+- os gráficos agora são widgets customizados em Qt, abrindo espaço para animações, transições e novos componentes visuais sem ficar preso às limitações do Tkinter;
+- o motor de parsing e análise do log foi mantido e reaproveitado, então a leitura operacional continua consistente.
 
-## Como funciona
+## Principais telas
 
-O app lê um arquivo de log com o mesmo formato do `log_exemplo.txt` e usa estas regras principais:
+### 1. Visão geral
+- cards com KPIs principais;
+- gauge animado com score operacional;
+- resumo executivo em linguagem de negócio;
+- gráficos de tendência, estados CNC e mix de categorias.
 
-- `Output 6, Program_Running turned On/Off` para abrir e fechar uma sessão de programa;
-- `Output 1, Cut_Control turned On/Off` para contar abertura de arco e calcular o tempo de arco;
-- `Update Cnc State to ...` para montar o histórico de estados CNC e a estimativa de permanência em cada estado;
-- tópicos `.../Status` para mapear disponibilidade dos serviços;
-- mensagens com `error`, `fault`, `alarm`, `collision`, `Fast Stop` e `publish xpr error` para listar falhas;
-- mensagens de versão / branch / softwares instalados para formar um inventário técnico.
+### 2. Programas
+- tabela de programas detectados;
+- painel lateral com detalhes completos da sessão;
+- tabela com os eventos mais recentes do programa selecionado.
 
-## Registros recomendados extraídos automaticamente
+### 3. Alertas e timeline
+- recomendações automáticas priorizadas;
+- trilha de falhas/incidentes;
+- timeline conjunta com estados CNC e status de serviços.
 
-Com base no log, o app já sugere e implementa registros como:
+### 4. Inventário técnico
+- tabela com versões e inventário extraídos do log;
+- ranking de tópicos e módulos (`SourceContext`);
+- highlights técnicos resumidos.
 
-- registro de eficiência por programa;
-- registro de disponibilidade dos serviços;
-- registro de incidentes de segurança;
-- registro de saúde Fieldbus / CAN;
-- registro de inventário técnico e versões;
-- registro de erros fora de programa;
-- registro por origem técnica (`SourceContext`).
+## Como executar
 
-## Executar a interface gráfica
+Instale a dependência principal:
+
+```bash
+python3 -m pip install PySide6
+```
+
+Depois rode a interface:
 
 ```bash
 python3 monitor_app.py
@@ -48,7 +52,7 @@ Ou já abrindo um log específico:
 python3 monitor_app.py log_exemplo.txt
 ```
 
-## Executar somente o resumo no terminal
+## Resumo em JSON no terminal
 
 ```bash
 python3 monitor_app.py log_exemplo.txt --summary
@@ -61,6 +65,6 @@ Na interface gráfica é possível:
 - abrir outro arquivo de log;
 - exportar um resumo estruturado em JSON com KPIs, estados, serviços, registros sugeridos, inventário e top erros.
 
-## Observação importante
+## Observação
 
-As métricas de arco usam o sinal `Cut_Control`. Se no seu ambiente o evento real de arco usar outro sinal, eu posso ajustar rapidamente a regra para o nome correto do seu log.
+As métricas de arco continuam usando o sinal `Cut_Control`. Se no seu ambiente o evento real de arco usar outro sinal, a regra pode ser ajustada rapidamente.
